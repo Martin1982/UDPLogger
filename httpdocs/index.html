@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>UDP Logging system</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+        }
+        pre {
+            margin: 3px 0 0 0;
+            padding: 2px;
+        }
+        #messages {
+            margin: 5px;
+            height: 100px;
+            overflow: auto;
+            border: 1px solid #777777;
+            border-radius: 3px;
+        }
+        #messages .evenLine {
+            background-color: #AEBDCC;
+        }
+        #g1 {
+            width: 200px;
+            height: 160px;
+            display: inline-block;
+            margin: 1em;
+        }
+    </style>
+</head>
+<body>
+<canvas id="mycanvas" width="100%" height="100%"></canvas>
+<div id="messages">
+    <pre>Log message</pre>
+</div>
+<div id="g1"></div>
+<script type="text/javascript" src="lib/raphael.2.1.0.min.js"></script>
+<script type="text/javascript" src="lib/justgage.1.0.1.min.js"></script>
+<script type="text/javascript" src="lib/smoothie.js"></script>
+<script src="/socket.io/socket.io.js"></script>
+<script>
+    var socket,
+        runningLines = {},
+        loglineCls = true,
+        graphCanvas = document.getElementById('mycanvas'),
+        smoothie = new SmoothieChart({
+          grid: {
+              strokeStyle:'rgb(125, 0, 0)',
+              fillStyle:'rgb(60, 0, 0)',
+              lineWidth: 1,
+              millisPerLine: 1000,
+              verticalSections: 20
+          },
+          labels: {
+              fillStyle:'rgb(60, 0, 0)'
+          }
+        });
+
+    // fine-tune graph and set streaming canvas
+    graphCanvas.height = 200;
+    graphCanvas.width = window.innerWidth-5;
+    smoothie.streamTo(graphCanvas, 1000);
+
+    // setup gauge
+    var g1 = new JustGage({
+      id: "g1",
+      value: 0,
+      min: 0,
+      max: 100,
+      title: "Error load",
+      label: "num errors"
+    });
+
+    // Setup socket connection
+    socket = io.connect(null);
+    socket.on('message', function(data) { message(data) });
+
+    function randomRgb() {
+        // create the rgb string
+        var col = randomColor(255) + ","
+        + randomColor(255) + ","
+        + randomColor(255);
+
+        //change the text color with the new random color
+        return col;
+    }
+
+    function randomColor(num) {
+        return Math.floor(Math.random() * num);
+    }
+
+    function message(data) {
+        var messageEl    = document.createElement('pre'),
+            messageBlock = document.getElementById('messages'),
+            deserializedData = JSON.parse(data),
+            color;
+
+        if (loglineCls === true) {
+            messageEl.setAttribute('class', 'evenLine');
+            loglineCls = false;
+        } else {
+            loglineCls = true;
+        }
+        messageEl.innerHTML = deserializedData.errorCode + ': ' + deserializedData.errorMessage;
+        messageBlock.appendChild(messageEl);
+        messageBlock.scrollTop = messageBlock.scrollHeight;
+
+        if (!runningLines.hasOwnProperty(deserializedData.errorCode)) {
+            runningLines[deserializedData.errorCode] = {
+                line : new TimeSeries(),
+                count: 0
+            };
+
+            color = randomRgb();
+
+            smoothie.addTimeSeries(
+                runningLines[deserializedData.errorCode].line,
+                {
+                    strokeStyle:'rgb(' + color + ')',
+                    fillStyle:'rgba(' + color + ', 0.4)',
+                    lineWidth:3
+                }
+            );
+        }
+
+        runningLines[deserializedData.errorCode].line.append(
+                new Date().getTime(),
+                runningLines[deserializedData.errorCode].count++
+        );
+        g1.refresh(runningLines[deserializedData.errorCode].count);
+    }
+</script>
+</body>
+</html>
